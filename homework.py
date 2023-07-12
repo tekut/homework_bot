@@ -1,9 +1,9 @@
-import telegram
-import os
-from telegram import Bot
-from telegram.ext import Updater
-import requests
 import logging
+import os
+import time
+
+import requests
+import telegram
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,18 +27,12 @@ HOMEWORK_VERDICTS = {
 
 
 def check_tokens():
-    """Проверяет доступность переменных окружения,
-    которые необходимы для работы программы."""
-    var_names = ["PRACTICUM_TOKEN", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"]
-    var_values = [os.getenv(var_name) for var_name in var_names]
-    for var_name, var_value in zip(var_names, var_values):
-        print(f"Переменная окружения {var_name} недоступна.")
-    else:
-        print(f"Значение переменной окружения {var_name}: {var_value}")
+    """Проверяет доступность переменных окружения."""
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
 def send_message(bot, message):
-    """Отправляет сообщение в Telegram чат"""
+    """Отправляет сообщение в Telegram чат."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logging.debug('Сообщение отправлено '
@@ -49,22 +43,44 @@ def send_message(bot, message):
 
 
 def get_api_answer(timestamp):
-    """Делает запрос к Практикуму"""
+    """Делает запрос к Практикуму."""
     payload = {'from_date': timestamp}
-    homework_statuses = requests.get(ENDPOINT, headers=HEADERS, params=payload)
-    response = homework_statuses.json()
-    return response
+    try:
+        homework_statuses = requests.get(ENDPOINT,
+                                         headers=HEADERS,
+                                         params=payload
+                                         )
+    except Exception as error:
+        logger.error(f'Ошибка при обращении к API: {error}')
+    finally:
+        homework_statuses.json()
 
-#def check_response(response):
-#    """Проверяет ответ API на соответствие документации"""
-#    ...
+
+def check_response(response):
+    """Проверяет ответ API на соответствие документации."""
+    if not isinstance(response, dict):
+        logging.error('Ответ API не словарь')
+        raise TypeError('Ответ API не словарь')
+    if 'homeworks' not in response:
+        logging.error('В ответе отсутствует ключ "homeworks"')
+        raise KeyError('В ответе отсутствует ключ "homeworks"')
+    homework = response['homeworks']
+    if not isinstance(homework, list):
+        logging.error('В ответе под ключом homeworks - не список')
+        raise TypeError('В ответе под ключом homeworks - не список')
+    if len(homework) == 0:
+        logging.error('Список домашек пуст')
+        raise IndexError('Список домашек пуст')
+    return homework[0]
 
 
 def parse_status(homework):
-    """Извлекает из информации о конкретной
-    домашней работе статус этой работы"""
+    """Извлекает статус домашней работы."""
     homework_name = homework['homework_name']
     status_homework = homework['status']
+    if status_homework not in HOMEWORK_VERDICTS:
+        logging.error(f'Некорректный статус работы: {status_homework}')
+        raise KeyError(f'Некорректный статус работы: {status_homework}')
     verdict = HOMEWORK_VERDICTS[status_homework]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
@@ -74,18 +90,31 @@ def main():
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
 
-
+    if not check_tokens():
+        logging.critical('Отсутствуют обязательные переменные окружения')
+        raise Exception('Отсутствуют обязательные переменные окружения')
 
     while True:
         try:
-
-            ...
+            homework_response = get_api_answer(timestamp)
+            homework = check_response(homework_response)
+            if homework is not None:
+                message = parse_status(homework)
+                send_message(bot, message)
 
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            ...
-        ...
+            send_message(bot, message)
+
+        finally:
+            time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.DEBUG,
+        filename='main.log',
+        filemode='w',
+        format='%(asctime)s, %(levelname)s, %(message)s'
+    )
     main()
