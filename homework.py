@@ -4,6 +4,7 @@ import time
 
 import requests
 import telegram
+from http import HTTPStatus
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -46,14 +47,22 @@ def get_api_answer(timestamp):
     """Делает запрос к Практикуму."""
     payload = {'from_date': timestamp}
     try:
-        homework_statuses = requests.get(ENDPOINT,
-                                         headers=HEADERS,
-                                         params=payload
-                                         )
+        response = requests.get(ENDPOINT,
+                                headers=HEADERS,
+                                params=payload
+                                )
     except Exception as error:
         logger.error(f'Ошибка при обращении к API: {error}')
-    finally:
-        homework_statuses.json()
+        raise Exception(f'Ошибка при обращении к API: {error}')
+    if response.status_code != HTTPStatus.OK:
+        logger.error('Недоступность эндпоинта')
+        raise Exception('Недоступность эндпоинта')
+    try:
+        response.json()
+    except ValueError:
+        logging.error('Ошибка парсинга')
+        raise ValueError('Ошибка парсинга')
+    return response.json()
 
 
 def check_response(response):
@@ -76,6 +85,9 @@ def check_response(response):
 
 def parse_status(homework):
     """Извлекает статус домашней работы."""
+    if 'homework_name' not in homework:
+        logging.error('В ответе API домашки нет ключа homework_name')
+        raise KeyError('В ответе API домашки нет ключа homework_name')
     homework_name = homework['homework_name']
     status_homework = homework['status']
     if status_homework not in HOMEWORK_VERDICTS:
