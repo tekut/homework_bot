@@ -9,8 +9,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-
 
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
@@ -23,7 +21,7 @@ HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 HOMEWORK_VERDICTS = {
     'approved': 'Работа проверена: ревьюеру всё понравилось. Ура!',
     'reviewing': 'Работа взята на проверку ревьюером.',
-    'rejected': 'Работа проверена: у ревьюера есть замечания.'
+    'rejected': 'Работа проверена: у ревьюера есть замечания.',
 }
 
 
@@ -35,10 +33,10 @@ def check_tokens():
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
     try:
-        bot.send_message(TELEGRAM_CHAT_ID, message)
-        logging.debug('Сообщение отправлено '
+        logging.debug('Попытка отправки сообщения '
                       f'{TELEGRAM_CHAT_ID}: {message}')
-        logger.debug('Сообщение отправлено ')
+        bot.send_message(TELEGRAM_CHAT_ID, message)
+        logging.debug('Сообщение успешно отправлено ')
     except Exception as error:
         logging.error(f'Ошибка при отправке сообщения: {error}')
 
@@ -49,20 +47,20 @@ def get_api_answer(timestamp):
     try:
         response = requests.get(ENDPOINT,
                                 headers=HEADERS,
-                                params=payload
+                                params=payload,
                                 )
     except Exception as error:
-        logger.error(f'Ошибка при обращении к API: {error}')
+        logging.error(f'Ошибка при обращении к API: {error}')
         raise Exception(f'Ошибка при обращении к API: {error}')
     if response.status_code != HTTPStatus.OK:
-        logger.error('Недоступность эндпоинта')
+        logging.error('Недоступность эндпоинта')
         raise Exception('Недоступность эндпоинта')
     try:
-        response.json()
+        api_response = response.json()
     except ValueError:
         logging.error('Ошибка парсинга')
         raise ValueError('Ошибка парсинга')
-    return response.json()
+    return api_response
 
 
 def check_response(response):
@@ -101,6 +99,7 @@ def main():
     """Основная логика работы бота."""
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     timestamp = int(time.time())
+    first_status_message = ''
 
     if not check_tokens():
         logging.critical('Отсутствуют обязательные переменные окружения')
@@ -110,10 +109,13 @@ def main():
         try:
             homework_response = get_api_answer(timestamp)
             homework = check_response(homework_response)
-            if homework is not None:
-                message = parse_status(homework)
+            message = parse_status(homework)
+            if message != first_status_message:
                 send_message(bot, message)
-
+                first_status_message = message
+        except telegram.error.TelegramError as error:
+            message = f'Ошибка на стороне Telegram: {error}'
+            send_message(bot, message)
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
             send_message(bot, message)
