@@ -32,9 +32,9 @@ def check_tokens():
 
 def send_message(bot, message):
     """Отправляет сообщение в Telegram чат."""
+    logging.info('Попытка отправки сообщения '
+                 f'{TELEGRAM_CHAT_ID}: {message}')
     try:
-        logging.debug('Попытка отправки сообщения '
-                      f'{TELEGRAM_CHAT_ID}: {message}')
         bot.send_message(TELEGRAM_CHAT_ID, message)
     except Exception as error:
         logging.error(f'Ошибка при отправке сообщения: {error}')
@@ -45,6 +45,7 @@ def send_message(bot, message):
 def get_api_answer(timestamp):
     """Делает запрос к Практикуму."""
     payload = {'from_date': timestamp}
+    logging.info(f'Отправка запроса на {ENDPOINT} с параметрами {payload}')
     try:
         response = requests.get(ENDPOINT,
                                 headers=HEADERS,
